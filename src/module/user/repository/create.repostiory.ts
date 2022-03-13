@@ -8,7 +8,7 @@ import { UserDocument } from '../schema/user'
 export class UserCreateRepository {
   constructor(
     @InjectModel('User')
-    private readonly userModel: Model<UserDocument>,
+    private readonly userModel: Model<UserDocument>
   ) {}
 
   async execute(data: IUser): Promise<IUser> {

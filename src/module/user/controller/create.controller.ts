@@ -1,12 +1,11 @@
-import { Controller, Get, Logger, Req, UseGuards } from '@nestjs/common'
+import { Controller, Get, Req, UseGuards } from '@nestjs/common'
 import { AuthGuard } from '@nestjs/passport'
+import { UserCreateRepository } from '../repository/create.repostiory'
+import { UserMapper } from '../service/mapper'
 
 @Controller()
 export class UserCreateController {
-  logger
-  constructor() {
-    this.logger = new Logger(UserCreateController.name)
-  }
+  constructor(private readonly userCreateRepository: UserCreateRepository, private readonly userMapper: UserMapper) {}
 
   @Get()
   @UseGuards(AuthGuard('google'))
@@ -15,9 +14,9 @@ export class UserCreateController {
 
   @Get('/auth/google/callback')
   @UseGuards(AuthGuard('google'))
-  googleAuthRedirect(@Req() req) {
-    const user = req.user
-    this.logger.log(user)
+  async googleAuthRedirect(@Req() req) {
+    const user = await this.userMapper.execute(req.user)
+    this.userCreateRepository.execute(user)
     return user
   }
 }
