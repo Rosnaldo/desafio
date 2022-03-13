@@ -1,0 +1,188 @@
+image: node:12-alpine
+
+stages:
+  - install
+  - test
+  - build
+  # - release
+  # - deploy
+  # - cleanup
+
+variables:
+  PROJECT_NAME: api-coodesh-com-challenges
+  GATEWAY: istio-system/coodesh-com-gateway
+  NAMESPACE: api-system
+  GIT_DEPTH: 100
+  SAST_DEFAULT_ANALYZERS: "nodejs-scan"
+  SAST_EXCLUDED_PATHS: "spec, seeds, tests, coverage"
+  PREFIX: /v2/challenges
+  MONGOMS_DOWNLOAD_URL: 'https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-ubuntu1804-4.2.8.tgz'
+  MONGOMS_VERSION: '4.2.8'
+
+.only-run:
+  only:
+    refs:
+      - develop
+      - master
+
+.only-run-changes:
+  only:
+    changes:
+      - src/**/*
+      - src/**/*/*
+
+.only-cache:
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - node_modules/
+
+.only-cache-pull:
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - node_modules/
+    policy: pull
+
+.only-artifacts:
+  artifacts:
+    paths:
+      - dist/
+
+install:
+  stage: install
+  script:
+    - init_deps
+    - init_ssh
+    - npm config set unsafe-perm true
+    - npm install
+  extends:
+    - .only-cache
+  interruptible: true
+
+coverage:
+  stage: test
+  image: node:10
+  script:
+    - npm run test:cov
+  artifacts:
+    when: always
+    reports:
+      cobertura: coverage/cobertura-coverage.xml
+      junit:
+        - coverage/junit.xml
+    paths:
+      - coverage
+  interruptible: true
+  allow_failure: true
+  extends:
+    - .only-cache-pull
+    - .only-run-changes
+
+test:
+  stage: test
+  image: node:10
+  script:
+    - CI=true MONGOMS_DEBUG=1 npm run test
+  extends:
+    - .only-cache-pull
+    - .only-run-changes
+
+build:
+  stage: build
+  script:
+    - init_deps
+    - init_ssh
+    - npm config set unsafe-perm true
+    - npm run build
+  extends:
+    - .only-cache-pull
+    - .only-artifacts
+    - .only-run
+  needs:
+    - install
+  interruptible: true
+
+# .func_release:
+#   stage: release
+#   image: docker:19.03.12
+#   services:
+#     - name: docker:19.03.12-dind
+#       alias: docker
+#   script:
+#     - init_docker
+#     - push_docker
+#   interruptible: true
+
+# include:
+    # - 'config/ci/Develop.yml'
+    # - 'config/ci/Review.yml'
+    # - 'config/ci/Production.yml'
+  # - template: Code-Quality.gitlab-ci.yml
+  # - template: Security/Secret-Detection.gitlab-ci.yml
+  # - template: Security/SAST.gitlab-ci.yml
+
+.functions: &functions |
+  #  Loading Gitlab CI custom functions
+  function init_aws() {
+      aws eks --region ${AWS_REGION} update-kubeconfig --name ${AWS_CLUSTER_NAME}
+  }
+
+  function run_helm() {
+      helm upgrade \
+      --install  \
+      --set release.name="${PROJECT_NAME}" \
+      --set release.image="${IMAGE}" \
+      --set release.host="${HOST}" \
+      --set release.port="${SERVER_PORT}" \
+      --set release.replicaCount="${REPLICA_COUNT}" \
+      --set release.namespace="${NAMESPACE}" \
+      --set release.prefix="${PREFIX}" \
+      --set release.env="${NODE_ENV}" \
+      --set istio.gateway="${GATEWAY}" \
+      --set mongo.replicaSetHosts="${MONGO_REPLICA_SET_HOSTS}" \
+      --set mongo.replicaSetName="${MONGO_REPLICA_SET_NAME}" \
+      --set mongo.replicaSetStatus="${MONGO_REPLICA_SET_STATUS}" \
+      --set mongo.replicaSetSrv="${MONGO_REPLICA_SET_SRV}" \
+      --set mongo.hosts="${MONGO_HOSTS}" \
+      --set mongo.host="${MONGO_HOST}" \
+      --set mongo.secret="${MONGO_SECRET}" \
+      --set mongo.db="${MONGO_DB}" \
+      --set redis.host="${REDIS_HOST}" \
+      --set redis.port="${REDIS_PORT}" \
+      --namespace ${NAMESPACE} \
+      --wait \
+      --force \
+      ${PROJECT_NAME} \
+      ./config/helm
+  }
+
+  function init_docker() {
+      apk add --no-cache curl jq python3 py-pip
+      pip install awscli
+      $(aws ecr get-login --no-include-email --region ${AWS_REGION})
+  }
+
+  function push_docker() {
+      docker build --cache-from ${IMAGE}:latest -t ${IMAGE} -f ./config/docker/Dockerfile .
+      docker tag $IMAGE:latest $IMAGE:$CI_COMMIT_SHORT_SHA
+      docker push $IMAGE
+  }
+
+
+  function init_deps() {
+      apk --update add openssh-client bash git autoconf automake bash g++ rsync \
+      libc6-compat libjpeg-turbo-dev libpng-dev libtool make python3 nasm
+  }
+
+  # SSH Settings
+  function init_ssh() {
+      mkdir -p ~/.ssh
+      eval "$(ssh-agent -s)"
+      [[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
+      bash -c 'ssh-add <(echo "$SSH_APOLLO_PRIVATE_KEY")'
+  }
+
+
+before_script:
+  - *functions
