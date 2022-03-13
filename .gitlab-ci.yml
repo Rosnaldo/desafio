@@ -9,7 +9,7 @@ stages:
   # - cleanup
 
 variables:
-  PROJECT_NAME: api-coodesh-com-challenges
+  PROJECT_NAME: api-desafio
   GATEWAY: istio-system/coodesh-com-gateway
   NAMESPACE: api-system
   GIT_DEPTH: 100

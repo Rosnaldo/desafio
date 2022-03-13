@@ -1,8 +1,8 @@
 {
-  "name": "challenges-api",
+  "name": "desafio",
   "private": true,
   "version": "0.0.1",
-  "description": "Coodesh Challenges API",
+  "description": "Desafio API",
   "license": "MIT",
   "scripts": {
     "prebuild": "rimraf dist",
