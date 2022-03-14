@@ -16,7 +16,7 @@ export class UserCreateController {
   @UseGuards(AuthGuard('google'))
   async googleAuthRedirect(@Req() req) {
     const user = await this.userMapper.execute(req.user)
-    this.userCreateRepository.execute(user)
+    await this.userCreateRepository.execute(user)
     return user
   }
 }
